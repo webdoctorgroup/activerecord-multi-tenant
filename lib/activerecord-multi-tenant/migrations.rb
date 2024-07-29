@@ -87,6 +87,8 @@ module MultiTenant
     private
 
     def initialize(connection, options = {})
+      p '*' * 50
+      p 'SchemaDumper#initialize'
       super
 
       citus_version =
@@ -112,6 +114,8 @@ module MultiTenant
     end
 
     def table(table, stream)
+      p '*' * 50
+      p 'SchemaDumper#table'
       super
       table_name = remove_prefix_and_suffix(table)
       distribution_column = @distribution_columns[table_name]
