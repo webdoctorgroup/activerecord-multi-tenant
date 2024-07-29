@@ -84,7 +84,7 @@ module ActiveRecord
 end
 
 module MultiTenant
-  class SchemaDumper
+  module SchemaDumper
     private
 
     def initialize(connection, options = {})
