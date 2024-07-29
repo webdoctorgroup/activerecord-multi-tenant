@@ -83,7 +83,7 @@ module ActiveRecord
   end
 end
 
-module ActiveRecord
+module MultiTenant
   class SchemaDumper
     private
 
