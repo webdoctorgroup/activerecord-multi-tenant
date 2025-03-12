@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe MultiTenant do
   describe '.load_current_tenant!' do
-    let(:fake_tenant) { OpenStruct.new(id: 1) }
+    let(:fake_tenant) { double(id: 1) }
     let(:mock_klass) { double(find: fake_tenant) }
 
     before do
@@ -115,6 +115,34 @@ RSpec.describe MultiTenant do
           }
           expect(MultiTenant.tenant_klass_defined?(tenant_name, options)).to eq(true)
         end
+      end
+    end
+  end
+
+  describe '.wrap_methods' do
+    context 'when method is already prepended' do
+      it 'is not an stack error' do
+        klass = Class.new do
+          def hello
+            'hello'
+          end
+        end
+
+        klass.prepend(Module.new do
+          def hello
+            "#{super} world"
+          end
+
+          def owner
+            Class.new(ActiveRecord::Base) do
+              self.table_name = 'accounts'
+            end.new
+          end
+        end)
+
+        MultiTenant.wrap_methods(klass, :owner, :hello)
+
+        expect(klass.new.hello).to eq('hello world')
       end
     end
   end

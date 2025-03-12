@@ -1,4 +1,6 @@
-require_relative './multi_tenant'
+# frozen_string_literal: true
+
+require_relative 'multi_tenant'
 
 module MultiTenant
   # Extension to the model to allow scoping of models to the current tenant. This is done by adding
@@ -6,7 +8,7 @@ module MultiTenant
   # model declaration.
   # Adds scoped_by_tenant? partition_key, primary_key and inherited methods to the model
   module ModelExtensionsClassMethods
-    DEFAULT_ID_FIELD = 'id'.freeze
+    DEFAULT_ID_FIELD = 'id'
     # executes when multi_tenant method is called in the model. This method adds the following
     # methods to the model that calls it.
     # scoped_by_tenant? - returns true if the model is scoped by tenant
@@ -40,19 +42,15 @@ module MultiTenant
                                         .try(:instance_variable_get, :@partition_key)
           end
 
-          # Avoid primary_key errors when using composite primary keys (e.g. id, tenant_id)
-          def primary_key
-            if defined?(PRIMARY_KEY_NOT_SET) ? !PRIMARY_KEY_NOT_SET.equal?(@primary_key) : @primary_key
-              return @primary_key
-            end
-
+          def reset_primary_key
             primary_object_keys = Array.wrap(connection.schema_cache.primary_keys(table_name)) - [partition_key]
 
-            @primary_key = if primary_object_keys.size == 1
-                             primary_object_keys.first
-                           elsif connection.schema_cache.columns_hash(table_name).include? DEFAULT_ID_FIELD
-                             DEFAULT_ID_FIELD
-                           end
+            self.primary_key = if primary_object_keys.size == 1
+                                 primary_object_keys.first
+                               elsif table_name &&
+                                     connection.schema_cache.columns_hash(table_name).include?(DEFAULT_ID_FIELD)
+                                 DEFAULT_ID_FIELD
+                               end
           end
 
           def inherited(subclass)
@@ -68,15 +66,18 @@ module MultiTenant
 
         # Create an implicit belongs_to association only if tenant class exists
         if MultiTenant.tenant_klass_defined?(tenant_name, options)
-          belongs_to tenant_name, **options.slice(:class_name, :inverse_of, :optional)
-                                           .merge(foreign_key: options[:partition_key])
+          belongs_to(
+            tenant_name,
+            **options.slice(:class_name, :inverse_of, :optional),
+            foreign_key: options[:partition_key]
+          )
         end
 
         # New instances should have the tenant set
         after_initialize proc { |record|
           if MultiTenant.current_tenant_id &&
              (!record.attribute_present?(partition_key) || record.public_send(partition_key.to_sym).nil?)
-            record.public_send("#{partition_key}=".to_sym, MultiTenant.current_tenant_id)
+            record.public_send(:"#{partition_key}=", MultiTenant.current_tenant_id)
           end
         }
 
@@ -188,17 +189,19 @@ ActiveSupport.on_load(:active_record) do |base|
 end
 
 # skips statement caching for classes that is Multi-tenant or has a multi-tenant relation
-class ActiveRecord::Associations::Association
-  alias skip_statement_cache_orig skip_statement_cache?
+module MultiTenant
+  module AssociationExtensions
+    def skip_statement_cache?(*scope)
+      return true if klass.respond_to?(:scoped_by_tenant?) && klass.scoped_by_tenant?
 
-  def skip_statement_cache?(*scope)
-    return true if klass.respond_to?(:scoped_by_tenant?) && klass.scoped_by_tenant?
+      if reflection.through_reflection
+        through_klass = reflection.through_reflection.klass
+        return true if through_klass.respond_to?(:scoped_by_tenant?) && through_klass.scoped_by_tenant?
+      end
 
-    if reflection.through_reflection
-      through_klass = reflection.through_reflection.klass
-      return true if through_klass.respond_to?(:scoped_by_tenant?) && through_klass.scoped_by_tenant?
+      super
     end
-
-    skip_statement_cache_orig(*scope)
   end
 end
+
+ActiveRecord::Associations::Association.prepend(MultiTenant::AssociationExtensions)
