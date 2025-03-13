@@ -5,7 +5,7 @@ module Arel
     # Overrides the delete_all method to include tenant scoping
     def delete_all
       # Call the original delete_all method if the current tenant is identified by an ID
-      return super if MultiTenant.current_tenant_is_id? || MultiTenant.current_tenant.nil?
+      return super if MultiTenant.current_tenant_is_id? || MultiTenant.current_tenant.nil? || primary_key.nil?
 
       stmt = Arel::DeleteManager.new.from(table)
       stmt.wheres = [generate_in_condition_subquery]
